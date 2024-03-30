@@ -6,7 +6,7 @@ import {
     ComfyKSamplerNode, ComfySaveImageWebsocketNode, ComfyVaeDecodeNode
 } from '../comfy-basic-nodes.ts'
 import { ComfyGraph } from '../comfy-graph.ts'
-import { promptForImage } from '../comfy-api-helpers.ts'
+import { getCheckpoints, promptForImage } from '../comfy-api-helpers.ts'
 
 const host = '127.0.0.1:8188',
     positivePrompt = 'beautiful scenery nature glass bottle landscape, purple galaxy bottle',
@@ -18,16 +18,11 @@ const host = '127.0.0.1:8188',
 
 const client = new ComfyApiClient(host)
 
-// Fetch the object info, which contains the list of available checkpoints
+// Get checkpoints
 
-const info = await client.getObjectInfo(),
-    ckptNameInfo = info['CheckpointLoaderSimple'].inputs.required['ckpt_name']
+const checkpoints = await getCheckpoints(client)
 
-if (!('values' in ckptNameInfo) || ckptNameInfo.values.length === 0) {
-    throw new Error('No checkpoints avalable')
-}
-
-const firstCkptName = ckptNameInfo.values[0]
+const firstCkptName = checkpoints[0]
 console.log(`Using checkpoint ${firstCkptName}`)
 
 // Build a node graph

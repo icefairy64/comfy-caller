@@ -26,3 +26,22 @@ export async function promptForImage(api: ComfyApiClient, prompt: any, imageNode
 
     return result
 }
+
+export async function getObjectInputValues(api: ComfyApiClient, object: string, input: string) {
+    const info = await api.getObjectInfo(),
+        objectInfo = info[object].inputs.required[input]
+
+    if (!('values' in objectInfo) || objectInfo.values.length === 0) {
+        throw new Error('No values available')
+    }
+
+    return objectInfo.values
+}
+
+export function getCheckpoints(api: ComfyApiClient) {
+    return getObjectInputValues(api, 'CheckpointLoaderSimple', 'ckpt_name')
+}
+
+export function getLoras(api: ComfyApiClient) {
+    return getObjectInputValues(api, 'LoraLoader', 'lora_name')
+}
