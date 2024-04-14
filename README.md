@@ -37,7 +37,7 @@ All the usage examples are located in the `examples` directory.
     - [x] `EmptyLatent`
     - [x] `SaveImageWebsocket`
     - [ ] Anything else
-  - [ ] UI workflow import
+  - [x] UI workflow import
   - [ ] API workflow import
 
 ## License

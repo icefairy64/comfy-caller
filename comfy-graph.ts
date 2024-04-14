@@ -46,8 +46,18 @@ export abstract class ComfyNode {
     }
 }
 
+export class ComfyGenericNode extends ComfyNode {
+    classType: string
+
+    constructor(classType: string) {
+        super()
+        this.classType = classType
+    }
+}
+
 export class ComfyGraph {
     nodes: ComfyNode[] = []
+    nodeMap: Map<string, ComfyNode> = new Map()
 
     addNode(node: ComfyNode, id?: string) {
         if (id === undefined) {
@@ -55,6 +65,7 @@ export class ComfyGraph {
         }
         node.id = id
         this.nodes.push(node)
+        this.nodeMap.set(id, node)
     }
 
     toApiPrompt() {

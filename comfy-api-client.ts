@@ -245,51 +245,11 @@ export class ComfyApiClient {
             throw new Error('Failed to enqueue prompt: ' + await req.text())
         }
 
-        const data = await req.json(),
-            result: ComfyObjectInfoResponse = {}
-
-        for (const objectKey in data) {
-            const serverInfo = data[objectKey],
-                objectInfo: ComfyObjectInfo = {
-                    inputs: {
-                        required: {}
-                    },
-                    outputs: [],
-                    name: serverInfo.name,
-                    category: serverInfo.category,
-                    description: serverInfo.description,
-                    displayName: serverInfo['display_name'],
-                    isOutputNode: serverInfo['output_node']
-                }
-
-            result[objectKey] = objectInfo
-
-            if (serverInfo.input.required != null) {
-                for (const input in serverInfo.input.required) {
-                    objectInfo.inputs.required[input] = this.parseObjectInputInfo(serverInfo.input.required[input])
-                }
-            }
-
-            if (serverInfo.input.hidden != null) {
-                objectInfo.inputs.hidden = {}
-                for (const input in serverInfo.input.hidden) {
-                    objectInfo.inputs.hidden[input] = this.parseObjectInputInfo(serverInfo.input.hidden[input])
-                }
-            }
-
-            for (let outputIndex = 0; outputIndex < serverInfo.output.length; outputIndex++) {
-                objectInfo.outputs.push({
-                    type: serverInfo.output[outputIndex],
-                    isList: serverInfo['output_is_list'][outputIndex],
-                    name: serverInfo['output_name'][outputIndex]
-                })
-            }
-        }
-
-        return result
+        const data = await req.json()
+        return ComfyApiClient.parseObjectInfoResponse(data)
     }
 
-    private parseObjectInputInfo(info: any[]): ComfyInputInfo {
+    private static parseObjectInputInfo(info: any[]): ComfyInputInfo {
         const type: string | string[] = info[0]
         if (type instanceof Array) {
             return {
@@ -324,5 +284,49 @@ export class ComfyApiClient {
         return {
             type
         }
+    }
+
+    static parseObjectInfoResponse(data: any): ComfyObjectInfoResponse {
+        const result: ComfyObjectInfoResponse = {}
+
+        for (const objectKey in data) {
+            const serverInfo = data[objectKey],
+                objectInfo: ComfyObjectInfo = {
+                    inputs: {
+                        required: {}
+                    },
+                    outputs: [],
+                    name: serverInfo.name,
+                    category: serverInfo.category,
+                    description: serverInfo.description,
+                    displayName: serverInfo['display_name'],
+                    isOutputNode: serverInfo['output_node']
+                }
+
+            result[objectKey] = objectInfo
+
+            if (serverInfo.input.required != null) {
+                for (const input in serverInfo.input.required) {
+                    objectInfo.inputs.required[input] = ComfyApiClient.parseObjectInputInfo(serverInfo.input.required[input])
+                }
+            }
+
+            if (serverInfo.input.hidden != null) {
+                objectInfo.inputs.hidden = {}
+                for (const input in serverInfo.input.hidden) {
+                    objectInfo.inputs.hidden[input] = ComfyApiClient.parseObjectInputInfo(serverInfo.input.hidden[input])
+                }
+            }
+
+            for (let outputIndex = 0; outputIndex < serverInfo.output.length; outputIndex++) {
+                objectInfo.outputs.push({
+                    type: serverInfo.output[outputIndex],
+                    isList: serverInfo['output_is_list'][outputIndex],
+                    name: serverInfo['output_name'][outputIndex]
+                })
+            }
+        }
+
+        return result
     }
 }
