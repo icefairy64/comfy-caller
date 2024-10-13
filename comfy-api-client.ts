@@ -24,6 +24,11 @@ export interface ComfyExecutionCachedEvent {
     promptId: string
 }
 
+export interface ComfyExecutionSuccessEvent {
+    type: 'executionsuccess',
+    promptId: string
+}
+
 export interface ComfyExecutingEvent {
     type: 'executing',
     node: string | null,
@@ -42,6 +47,7 @@ export type ComfyEvent =
     ComfyExecutionStartEvent |
     ComfyExecutingEvent |
     ComfyExecutionCachedEvent |
+    ComfyExecutionSuccessEvent |
     ComfyStatusEvent
 
 export type ComfyEventType = ComfyEvent['type']
@@ -54,7 +60,11 @@ export interface ComfyPromptResponse {
     nodeErrors: Record<string, string>
 }
 
-type ComfyInputInfo = ({
+interface ComfyInputGenericInfo {
+    tooltip?: string
+}
+
+export type ComfyInputInfo = ({
     type: 'TEXT',
     multiline: boolean
 } | {
@@ -71,20 +81,42 @@ type ComfyInputInfo = ({
     maxValue: number,
     step?: number
 } | {
-    type: string
+    type: 'STRING',
+    defaultValue: string
+} | {
+    type: 'BOOLEAN',
+    defaultValue: boolean
+} | {
+    type: 'MODEL'
+} | {
+    type: 'VAE'
+} | {
+    type: 'CONDITIONING'
+} | {
+    type: 'LATENT'
+} | {
+    type: 'CLIP'
+} | {
+    type: 'IMAGE'
+} | {
+    type: 'MASK'
+} | {
+    genericType: string
 } | {
     values: string[]
-})
+}) & ComfyInputGenericInfo
 
-interface ComfyOutputInfo {
+export interface ComfyOutputInfo {
     type: string,
     name: string,
-    isList: boolean
+    isList: boolean,
+    tooltip?: string
 }
 
 export interface ComfyObjectInfo {
     inputs: {
         required: Record<string, ComfyInputInfo>,
+        optional?: Record<string, ComfyInputInfo>,
         hidden?: Record<string, ComfyInputInfo>
     }
     outputs: ComfyOutputInfo[],
@@ -191,6 +223,10 @@ export class ComfyApiClient {
                 nodes: data['nodes'],
                 promptId: data['prompt_id']
             }
+            case 'execution_success': return {
+                type: 'executionsuccess',
+                promptId: data['prompt_id']
+            }
             case 'executing': return {
                 type: 'executing',
                 node: data['node'],
@@ -250,20 +286,21 @@ export class ComfyApiClient {
     }
 
     private static parseObjectInputInfo(info: any[]): ComfyInputInfo {
-        const type: string | string[] = info[0]
+        const type: string | string[] = info[0],
+            data: ComfyInputGenericInfo | undefined = info[1]
+        let result
+
         if (type instanceof Array) {
-            return {
+            result = {
                 values: type
             }
-        }
-        if (type === 'TEXT') {
-            return {
+        } else if (type === 'TEXT') {
+            result = {
                 type: 'TEXT',
                 multiline: info[1].multiline
             }
-        }
-        if (type === 'FLOAT') {
-            return {
+        } else if (type === 'FLOAT') {
+            result = {
                 type: 'FLOAT',
                 defaultValue: info[1].default,
                 minValue: info[1].min,
@@ -271,19 +308,63 @@ export class ComfyApiClient {
                 step: info[1].step,
                 round: info[1].round,
             }
-        }
-        if (type === 'INT') {
-            return {
+        } else if (type === 'INT') {
+            result = {
                 type: 'INT',
                 defaultValue: info[1].default,
                 minValue: info[1].min,
                 maxValue: info[1].max,
                 step: info[1].step
             }
+        } else if (type === 'STRING') {
+            result = {
+                type: 'STRING',
+                defaultValue: info[1].default
+            }
+        } else if (type === 'BOOLEAN') {
+            result = {
+                type: 'BOOLEAN',
+                defaultValue: info[1].default
+            }
+        } else if (type === 'CONDITIONING') {
+            result = {
+                type: 'CONDITIONING'
+            }
+        } else if (type === 'MODEL') {
+            result = {
+                type: 'MODEL'
+            }
+        } else if (type === 'LATENT') {
+            result = {
+                type: 'LATENT'
+            }
+        } else if (type === 'CLIP') {
+            result = {
+                type: 'CLIP'
+            }
+        } else if (type === 'VAE') {
+            result = {
+                type: 'VAE'
+            }
+        } else if (type === 'IMAGE') {
+            result = {
+                type: 'IMAGE'
+            }
+        } else if (type === 'MASK') {
+            result = {
+                type: 'MASK'
+            }
+        } else {
+            result = {
+                genericType: type
+            }
         }
-        return {
-            type
+
+        if (data?.tooltip != null) {
+            result.tooltip = data.tooltip
         }
+        
+        return result
     }
 
     static parseObjectInfoResponse(data: any): ComfyObjectInfoResponse {
@@ -311,6 +392,13 @@ export class ComfyApiClient {
                 }
             }
 
+            if (serverInfo.input.optional != null) {
+                objectInfo.inputs.optional = {}
+                for (const input in serverInfo.input.optional) {
+                    objectInfo.inputs.optional[input] = ComfyApiClient.parseObjectInputInfo(serverInfo.input.optional[input])
+                }
+            }
+
             if (serverInfo.input.hidden != null) {
                 objectInfo.inputs.hidden = {}
                 for (const input in serverInfo.input.hidden) {
@@ -322,7 +410,8 @@ export class ComfyApiClient {
                 objectInfo.outputs.push({
                     type: serverInfo.output[outputIndex],
                     isList: serverInfo['output_is_list'][outputIndex],
-                    name: serverInfo['output_name'][outputIndex]
+                    name: serverInfo['output_name'][outputIndex],
+                    tooltip: serverInfo['output_tooltips']?.[outputIndex]
                 })
             }
         }

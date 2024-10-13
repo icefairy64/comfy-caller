@@ -3,6 +3,8 @@ export interface ComfyNodeSourceRef {
     sourceNodeOutputIndex: number
 }
 
+export interface ComfyNodeTypedSourceRef<T> extends ComfyNodeSourceRef {}
+
 export class ComfyNodeInputRef {
     node: ComfyNode
     name: string
@@ -24,6 +26,25 @@ export class ComfyNodeInputRef {
         this.node.inputs[this.name] = source
     }
 }
+
+export class ComfyNodeTypedInputRef<T> extends ComfyNodeInputRef {
+    get value(): T {
+        return this.node.inputs[this.name]
+    }
+
+    set value(value: T) {
+        this.node.inputs[this.name] = value
+    }
+
+    connectTo(source: ComfyNodeTypedSourceRef<T>) {
+        this.node.inputs[this.name] = source
+    }
+}
+
+export type ComfyNodeTypedSourceForInput<TInput> = 
+    TInput extends ComfyNodeTypedInputRef<infer T>
+        ? ComfyNodeTypedSourceRef<T>
+        : never
 
 export abstract class ComfyNode {
     id: string | undefined
