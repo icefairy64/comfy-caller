@@ -89,6 +89,12 @@ export class ComfyGraph {
         this.nodeMap.set(id, node)
     }
 
+    createNode<T extends ComfyNode>(ctor: new () => T, id?: string) {
+        const node = new ctor()
+        this.addNode(node, id)
+        return node
+    }
+
     toApiPrompt() {
         const json: Record<string, any> = {}
         for (const node of this.nodes) {

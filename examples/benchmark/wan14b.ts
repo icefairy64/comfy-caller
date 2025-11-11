@@ -11,19 +11,12 @@ export type WAN21_14B_Tunables = {
 export function createGraph(params: WAN21_14B_Tunables) {
     const graph = new ComfyGraph()
 
-    const unetLoader = new UnetLoaderGGUFDisTorch2MultiGPU()
-    const clipLoader = new CLIPLoader()
-    const te = new CLIPTextEncode()
-    const latent = new EmptyHunyuanLatentVideo()
-    const sampler = new KSampler()
-    const out = new PreviewAny()
-
-    graph.addNode(unetLoader)
-    graph.addNode(clipLoader)
-    graph.addNode(te)
-    graph.addNode(latent)
-    graph.addNode(sampler, 'Sampler')
-    graph.addNode(out)
+    const unetLoader = graph.createNode(UnetLoaderGGUFDisTorch2MultiGPU)
+    const clipLoader = graph.createNode(CLIPLoader)
+    const te = graph.createNode(CLIPTextEncode)
+    const latent = graph.createNode(EmptyHunyuanLatentVideo)
+    const sampler = graph.createNode(KSampler, 'Sampler')
+    const out = graph.createNode(PreviewAny)
 
     unetLoader.connectAll({
         unet_name: 'wan2.2_t2v_low_noise_14B_Q6_K.gguf',
@@ -62,12 +55,6 @@ export function createGraph(params: WAN21_14B_Tunables) {
         steps: params.steps,
         latent_image: latent.sockets.outputs.LATENT
     })
-
-    // const out = new SaveLatent()
-    // out.connectAll({
-    //     samples: sampler.sockets.outputs.LATENT,
-    //     filename_prefix: 'bench'
-    // })
 
     out.connectAll({
         source: sampler.sockets.outputs.LATENT
