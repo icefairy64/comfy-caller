@@ -1,6 +1,8 @@
 import { ComfyApiClient } from './comfy-api-client.ts'
 import type { ComfyObjectInfo, ComfyInputInfo, ComfyOutputInfo, ComfyObjectInfoResponse } from './comfy-api-client.ts'
 
+const knownTypes = new Set<string>()
+
 function generateNodeDefinition(object: ComfyObjectInfo) {
     let code = 'export class '
     code += object.name
@@ -16,7 +18,10 @@ function generateNodeDefinition(object: ComfyObjectInfo) {
     code += 'Inputs>\n'
     code += '\t\toutputs: {\n'
     for (const output of object.outputs) {
-        code += generateOutputDefinition(output)
+        const outputDefCode = generateOutputDefinition(output)
+        if (outputDefCode) {
+            code += outputDefCode
+        }
     }
     code += '\t\t}\n'
     code += '\t}\n\n'
@@ -61,7 +66,9 @@ function generateNodeDefinition(object: ComfyObjectInfo) {
 }
 
 function* getNodeInputsIterator(object: ComfyObjectInfo) {
+    const inputs = new Set<string>
     for (const pair of Object.entries(object.inputs.required)) {
+        inputs.add(pair[0])
         yield {
             name: pair[0],
             input: pair[1],
@@ -70,6 +77,11 @@ function* getNodeInputsIterator(object: ComfyObjectInfo) {
     }
     if (object.inputs.optional != null) {
         for (const pair of Object.entries(object.inputs.optional)) {
+            if (inputs.has(pair[0])) {
+                console.warn(`Duplicate input ${pair[0]} on node ${object.name}`)
+                continue
+            }
+            inputs.add(pair[0])
             yield {
                 name: pair[0],
                 input: pair[1],
@@ -79,6 +91,11 @@ function* getNodeInputsIterator(object: ComfyObjectInfo) {
     }
     if (object.inputs.hidden != null) {
         for (const pair of Object.entries(object.inputs.hidden)) {
+            if (inputs.has(pair[0])) {
+                console.warn(`Duplicate input ${pair[0]} on node ${object.name}`)
+                continue
+            }
+            inputs.add(pair[0])
             yield {
                 name: pair[0],
                 input: pair[1],
@@ -110,7 +127,11 @@ function generateInputDefinition(name: string, input: ComfyInputInfo, required: 
     return code
 }
 
-function convertObjectInfoTypeToLocal(tp: string) {
+function convertObjectInfoTypeToLocal(tp: string | Array<string>) {
+    if (tp instanceof Array) {
+        return tp.map(escapeLiteral).join(' | ')
+    }
+
     if (tp === 'TEXT' || tp === 'STRING') {
         return 'string'
     } else if (tp === 'FLOAT' || tp === 'INT') {
@@ -118,8 +139,19 @@ function convertObjectInfoTypeToLocal(tp: string) {
     } else if (tp === 'BOOLEAN') {
         return 'boolean'
     } else {
+        if (tp === '*') {
+            tp = '$STAR'
+        }
         return 'ComfyValueType_' + tp
     }
+}
+
+function escapeName(name: string) {
+    return name.replaceAll(/\W/g, '_')
+}
+
+function escapeLiteral(literal: string) {
+    return `"${literal}"`
 }
 
 function getInputType(input: ComfyInputInfo) {
@@ -136,7 +168,17 @@ function getInputType(input: ComfyInputInfo) {
     }
 }
 
+function getOutputType(output: ComfyOutputInfo) {
+    return convertObjectInfoTypeToLocal(output.type)
+}
+
 function generateOutputDefinition(output: ComfyOutputInfo) {
+    const outputType = getOutputType(output)
+    if (!knownTypes.has(outputType)) {
+        console.warn(`Unknown output type: ${output.type}`)
+        return
+    }
+
     let code = '\t\t\t'
 
     if (output.tooltip != null) {
@@ -145,9 +187,9 @@ function generateOutputDefinition(output: ComfyOutputInfo) {
         code += '*/\n\t\t\t'
     }
 
-    code += output.name
+    code += escapeName(output.name)
     code += ': ComfyNodeTypedSourceRef<'
-    code += convertObjectInfoTypeToLocal(output.type)
+    code += outputType
     code += '>\n'
 
     return code
@@ -224,8 +266,12 @@ function generateComfyTypeDefs(response: ComfyObjectInfoResponse) {
     const typeArray = Object.values(response)
         .flatMap(o => [...getNodeInputsIterator(o)])
         .map(x => getInputType(x.input))
-        .filter(t => t.startsWith('ComfyValueType_'))
-    const types = new Set(typeArray)
+
+    for (const t of typeArray) {
+        knownTypes.add(t)
+    }
+
+    const types = new Set(typeArray.filter(t => t.startsWith('ComfyValueType_')))
 
     let code = ''
 
@@ -255,12 +301,22 @@ console.log('import type { ComfyNodeTypedSourceRef } from "./comfy-graph.ts"')
 console.log('')
 
 console.log('type MappedSources<TInputs> = {')
-console.log('\t[K in keyof TInputs]: TInputs[K] extends ComfyNodeTypedInputRef<infer T> ? T | ComfyNodeTypedSourceRef<T> : never')
+console.log('\t[K in keyof TInputs]: TInputs[K] extends (ComfyNodeTypedInputRef<infer T> | undefined) ? T | ComfyNodeTypedSourceRef<T> : never')
 console.log('}\n')
 
 console.log(generateComfyTypeDefs(info))
 
+const declaredNodeTypes = new Set()
 for (const object of Object.values(info)) {
+    if (declaredNodeTypes.has(object.name)) {
+        console.warn(`Duplicate node type ${object.name} (${object.displayName})`)
+        continue
+    }
+    if (object.name.includes(' ')) {
+        console.warn(`Node name ${object.name} is unsupported`)
+        continue
+    }
+    declaredNodeTypes.add(object.name)
     console.log(generateNodeDefinition(object))
     console.log('')
 }

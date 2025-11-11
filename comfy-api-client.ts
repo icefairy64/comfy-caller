@@ -13,6 +13,18 @@ export interface ComfyProgressEvent {
     node: string | null
 }
 
+export interface ComfyProgressStateEvent {
+    type: 'progressstate',
+    promptId: string,
+    nodes: Record<string, {
+        value: number,
+        max: number,
+        state: 'running' | 'finished',
+        nodeId: string,
+        parentNodeId: string | null
+    }>
+}
+
 export interface ComfyExecutionStartEvent {
     type: 'executionstart',
     promptId: string
@@ -29,10 +41,23 @@ export interface ComfyExecutionSuccessEvent {
     promptId: string
 }
 
+export interface ComfyExecutionErrorEvent {
+    type: 'executionerror',
+    promptId: string,
+    rawData: any
+}
+
 export interface ComfyExecutingEvent {
     type: 'executing',
     node: string | null,
     promptId: string
+}
+
+export interface ComfyExecutedEvent {
+    type: 'executed',
+    node: string | null,
+    promptId: string,
+    output: any // TODO: type
 }
 
 export interface ComfyStatusEvent {
@@ -46,8 +71,11 @@ export type ComfyEvent =
     ComfyProgressEvent |
     ComfyExecutionStartEvent |
     ComfyExecutingEvent |
+    ComfyExecutedEvent |
     ComfyExecutionCachedEvent |
     ComfyExecutionSuccessEvent |
+    ComfyExecutionErrorEvent |
+    ComfyProgressStateEvent |
     ComfyStatusEvent
 
 export type ComfyEventType = ComfyEvent['type']
@@ -142,7 +170,8 @@ export class ComfyApiClient {
 
     constructor(host: string, clientId?: string) {
         this.host = host
-        this.ws = new WebSocket(`ws://${host}/ws${clientId != null ? '?clientId=' + clientId : ''}`)
+        this.clientId = clientId ?? 'unknown'
+        this.ws = new WebSocket(`ws://${host}/ws${this.clientId != null ? '?clientId=' + this.clientId : ''}`)
         this.eventListeners = new Map()
 
         this.readyDeferred = new Deferred<void>()
@@ -199,6 +228,26 @@ export class ComfyApiClient {
         }
     }
 
+    private parseProgressStateEvent(data: any): ComfyProgressStateEvent {
+        const nodes: ComfyProgressStateEvent['nodes'] = {}
+        for (const key in data.nodes) {
+            const obj = data.nodes[key]
+            nodes[key] = {
+                value: obj.value,
+                max: obj.max,
+                state: obj.state,
+                nodeId: obj.node_id,
+                parentNodeId: obj.parent_node_id
+            }
+        }
+
+        return {
+            type: 'progressstate',
+            nodes,
+            promptId: data.prompt_id
+        }
+    }
+
     private parseEvent(json: any): ComfyEvent {
         const data = json.data
         switch (json['type']) {
@@ -214,6 +263,7 @@ export class ComfyApiClient {
                 promptId: data['prompt_id'],
                 node: data['node']
             }
+            case 'progress_state': return this.parseProgressStateEvent(data)
             case 'execution_start': return {
                 type: 'executionstart',
                 promptId: data['prompt_id']
@@ -227,12 +277,22 @@ export class ComfyApiClient {
                 type: 'executionsuccess',
                 promptId: data['prompt_id']
             }
+            case 'execution_error': return {
+                type: 'executionerror',
+                promptId: data['prompt_id'],
+                rawData: data
+            }
             case 'executing': return {
                 type: 'executing',
                 node: data['node'],
                 promptId: data['prompt_id']
             }
-            case 'execution_error': throw new Error(JSON.stringify(data))
+            case 'executed': return {
+                type: 'executed',
+                node: data['node'],
+                promptId: data['prompt_id'],
+                output: data['output']
+            }
             default: throw new Error(`Unknown event type ${json['type']}`)
         }
     }
@@ -319,12 +379,12 @@ export class ComfyApiClient {
         } else if (type === 'STRING') {
             result = {
                 type: 'STRING',
-                defaultValue: info[1].default
+                defaultValue: info[1]?.default
             }
         } else if (type === 'BOOLEAN') {
             result = {
                 type: 'BOOLEAN',
-                defaultValue: info[1].default
+                defaultValue: info[1]?.default
             }
         } else if (type === 'CONDITIONING') {
             result = {
